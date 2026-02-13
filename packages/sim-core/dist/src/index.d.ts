@@ -1,49 +1,9 @@
-export type Vec2 = {
-    x: number;
-    y: number;
-};
-export type TeamId = 'A' | 'B';
-export type PlayerSnapshot = {
-    id: string;
-    team: TeamId;
-    role: string;
-    x: number;
-    y: number;
-    vx: number;
-    vy: number;
-    state: string;
-    hasBall: boolean;
-};
-export type MatchSnapshot = {
-    matchId: string;
-    seq: number;
-    serverTimeMs: number;
-    clockSec: number;
-    score: {
-        A: number;
-        B: number;
-    };
-    ball: {
-        x: number;
-        y: number;
-        z: number;
-    };
-    players: PlayerSnapshot[];
-};
-export type EngineConfig = {
-    matchId: string;
-    seed: number;
-    engineVersion: string;
-};
-export declare class Engine {
-    private readonly config;
-    private readonly rng;
-    private seq;
-    private clockSec;
-    private readonly startedAtMs;
-    constructor(config: EngineConfig);
-    tick(dtSec: number): void;
-    getSnapshot(): MatchSnapshot;
-}
-export declare function createEngine(config: EngineConfig): Engine;
+import { FootballEngine, type EngineSnapshot, type MatchEvent, type EngineConfig } from './engine';
+import { Player, Ball, type PlayerStats } from './player';
+import { XorShift32 } from './rng';
+import { Vec2, v2 } from './vector';
+export { FootballEngine, Player, Ball, XorShift32, Vec2, v2 };
+export type { EngineSnapshot, MatchEvent, EngineConfig, PlayerStats };
+export * from './constants';
+export declare function createEngine(config: EngineConfig): FootballEngine;
 //# sourceMappingURL=index.d.ts.map

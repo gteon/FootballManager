@@ -1,4 +1,4 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { Controller, Get, Param, NotFoundException } from '@nestjs/common';
 import { MatchRegistryService } from './match-registry.service';
 
 @Controller('matches')
@@ -8,7 +8,7 @@ export class MatchQueryController {
   @Get(':matchId')
   get(@Param('matchId') matchId: string) {
     const match = this.registry.get(matchId);
-    if (!match) return { found: false };
-    return { found: true, match };
+    if (!match) throw new NotFoundException(`Match ${matchId} not found`);
+    return match;
   }
 }

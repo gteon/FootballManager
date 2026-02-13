@@ -52,7 +52,30 @@ let SimulationRunner = SimulationRunner_1 = class SimulationRunner {
             e.tick(dt);
             tick += 1;
             if (tick % snapshotEveryTicks === 0) {
-                const snap = e.getSnapshot();
+                const engineSnap = e.getSnapshot();
+                const snap = {
+                    matchId: engineSnap.matchId,
+                    seq: engineSnap.seq,
+                    serverTimeMs: engineSnap.serverTimeMs,
+                    clockSec: engineSnap.clockSec,
+                    score: engineSnap.score,
+                    ball: {
+                        x: engineSnap.ball.x,
+                        y: engineSnap.ball.y,
+                        z: engineSnap.ball.z,
+                    },
+                    players: engineSnap.players.map(p => ({
+                        id: p.id,
+                        team: p.team,
+                        role: p.role,
+                        x: p.x,
+                        y: p.y,
+                        vx: p.vx,
+                        vy: p.vy,
+                        state: p.state,
+                        hasBall: p.hasBall,
+                    })),
+                };
                 this.nats.publishJson('stream.match.snapshot', snap);
             }
         }, 1000 / tickHz);

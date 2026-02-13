@@ -12,6 +12,7 @@ const config_1 = require("@nestjs/config");
 const nats_module_1 = require("./nats/nats.module");
 const league_matches_controller_1 = require("./matches/league-matches.controller");
 const match_query_controller_1 = require("./matches/match-query.controller");
+const health_controller_1 = require("./matches/health.controller");
 const match_registry_service_1 = require("./matches/match-registry.service");
 const match_orchestrator_service_1 = require("./matches/match-orchestrator.service");
 let AppModule = class AppModule {
@@ -20,7 +21,7 @@ exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [config_1.ConfigModule.forRoot({ isGlobal: true }), nats_module_1.NatsModule],
-        controllers: [league_matches_controller_1.LeagueMatchesController, match_query_controller_1.MatchQueryController],
+        controllers: [league_matches_controller_1.LeagueMatchesController, match_query_controller_1.MatchQueryController, health_controller_1.HealthController],
         providers: [match_registry_service_1.MatchRegistryService, match_orchestrator_service_1.MatchOrchestrator],
     })
 ], AppModule);

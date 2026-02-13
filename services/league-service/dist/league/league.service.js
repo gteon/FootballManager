@@ -207,6 +207,9 @@ let LeagueService = class LeagueService {
         });
         this.lobby = null;
     }
+    openLobbiesCount() {
+        return this.lobby ? 1 : 0;
+    }
 };
 exports.LeagueService = LeagueService;
 exports.LeagueService = LeagueService = __decorate([

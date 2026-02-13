@@ -23,8 +23,8 @@ let MatchQueryController = class MatchQueryController {
     get(matchId) {
         const match = this.registry.get(matchId);
         if (!match)
-            return { found: false };
-        return { found: true, match };
+            throw new common_1.NotFoundException(`Match ${matchId} not found`);
+        return match;
     }
 };
 exports.MatchQueryController = MatchQueryController;

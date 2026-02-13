@@ -1,5 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { createEngine } from '@footballmanager/sim-core';
+import { createEngine, FootballEngine, type EngineSnapshot } from '@footballmanager/sim-core';
 import type {
   MatchStartedEvent,
   MatchSnapshot,
@@ -9,7 +9,7 @@ import { NatsService } from '../nats/nats.service';
 @Injectable()
 export class SimulationRunner implements OnModuleInit {
   private readonly logger = new Logger(SimulationRunner.name);
-  private readonly engines = new Map<string, ReturnType<typeof createEngine>>();
+  private readonly engines = new Map<string, FootballEngine>();
 
   constructor(private readonly nats: NatsService) {}
 
@@ -55,7 +55,33 @@ export class SimulationRunner implements OnModuleInit {
       tick += 1;
 
       if (tick % snapshotEveryTicks === 0) {
-        const snap: MatchSnapshot = e.getSnapshot();
+        const engineSnap: EngineSnapshot = e.getSnapshot();
+        
+        // Map EngineSnapshot to MatchSnapshot (contracts)
+        const snap: MatchSnapshot = {
+          matchId: engineSnap.matchId,
+          seq: engineSnap.seq,
+          serverTimeMs: engineSnap.serverTimeMs,
+          clockSec: engineSnap.clockSec,
+          score: engineSnap.score,
+          ball: {
+            x: engineSnap.ball.x,
+            y: engineSnap.ball.y,
+            z: engineSnap.ball.z,
+          },
+          players: engineSnap.players.map(p => ({
+            id: p.id,
+            team: p.team,
+            role: p.role,
+            x: p.x,
+            y: p.y,
+            vx: p.vx,
+            vy: p.vy,
+            state: p.state,
+            hasBall: p.hasBall,
+          })),
+        };
+        
         this.nats.publishJson('stream.match.snapshot', snap);
       }
     }, 1000 / tickHz);

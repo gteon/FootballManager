@@ -278,4 +278,8 @@ export class LeagueService implements OnModuleInit {
     // Reset lobby slot for next cycle.
     this.lobby = null;
   }
+
+  openLobbiesCount(): number {
+    return this.lobby ? 1 : 0;
+  }
 }

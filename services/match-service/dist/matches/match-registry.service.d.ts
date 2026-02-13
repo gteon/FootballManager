@@ -19,4 +19,5 @@ export declare class MatchRegistryService {
     get(matchId: string): MatchRecord | undefined;
     listByLeague(leagueId: string): MatchRecord[];
     listInProgressByLeague(leagueId: string): MatchRecord[];
+    count(): number;
 }

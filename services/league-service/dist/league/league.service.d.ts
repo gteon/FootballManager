@@ -54,5 +54,6 @@ export declare class LeagueService implements OnModuleInit {
     getStatus(userId: string): StatusResult;
     getLeague(leagueId: string): League;
     private closeLobby;
+    openLobbiesCount(): number;
 }
 export {};

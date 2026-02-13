@@ -31,6 +31,9 @@ let MatchRegistryService = class MatchRegistryService {
     listInProgressByLeague(leagueId) {
         return this.listByLeague(leagueId).filter((m) => m.status === 'in_progress');
     }
+    count() {
+        return this.matches.size;
+    }
 };
 exports.MatchRegistryService = MatchRegistryService;
 exports.MatchRegistryService = MatchRegistryService = __decorate([

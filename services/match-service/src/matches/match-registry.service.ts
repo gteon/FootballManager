@@ -46,4 +46,8 @@ export class MatchRegistryService {
       (m) => m.status === 'in_progress',
     );
   }
+
+  count(): number {
+    return this.matches.size;
+  }
 }

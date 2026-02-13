@@ -11,13 +11,14 @@ const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const league_module_1 = require("./league/league.module");
 const nats_module_1 = require("./nats/nats.module");
+const health_controller_1 = require("./league/health.controller");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [config_1.ConfigModule.forRoot({ isGlobal: true }), nats_module_1.NatsModule, league_module_1.LeagueModule],
-        controllers: [],
+        controllers: [health_controller_1.HealthController],
         providers: [],
     })
 ], AppModule);
