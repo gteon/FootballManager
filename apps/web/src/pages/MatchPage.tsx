@@ -73,14 +73,12 @@ export function MatchPage() {
       try {
         const matchRes = await fetch(`${MATCH_API}/matches/${matchId}`);
         if (!matchRes.ok) return;
-        const matchData = (await matchRes.json()) as {
-          found: boolean;
-          match?: { leagueId: string };
-        };
-        if (!matchData.found || !matchData.match?.leagueId) return;
+
+        const matchData = (await matchRes.json()) as { leagueId: string };
+        if (!matchData.leagueId) return;
 
         const liveRes = await fetch(
-          `${MATCH_API}/leagues/${matchData.match.leagueId}/matches/live`,
+          `${MATCH_API}/leagues/${matchData.leagueId}/matches/live`,
         );
         if (!liveRes.ok) return;
         const liveData = (await liveRes.json()) as {

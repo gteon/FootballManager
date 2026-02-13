@@ -1,6 +1,6 @@
 import { Player, Ball } from './player';
 export type MatchEvent = {
-    type: 'GOAL' | 'SAVE' | 'BALL_OUT' | 'PASS' | 'SHOT';
+    type: 'GOAL' | 'SAVE' | 'BALL_OUT' | 'PASS' | 'SHOT' | 'CLEARANCE' | 'HALF_TIME' | 'FULL_TIME';
     data?: any;
     timestamp: number;
 };
@@ -44,6 +44,8 @@ export declare class FootballEngine {
     private readonly rng;
     private seq;
     private clockSec;
+    private half;
+    private finished;
     private readonly startedAtMs;
     private events;
     readonly ball: Ball;
@@ -55,8 +57,6 @@ export declare class FootballEngine {
         B: number;
     };
     running: boolean;
-    goalCooldown: number;
-    resetCooldown: number;
     constructor(config: EngineConfig);
     start(): void;
     pause(): void;
@@ -65,6 +65,13 @@ export declare class FootballEngine {
     private _decide;
     private _decideWithoutBall;
     private _decideWithBall;
+    private _positionValue;
+    private _progressValue;
+    private _receiverOpenness;
+    private _interceptRisk;
+    private _isLineClearRadius;
+    private _inOwnHalf;
+    private _doClearance;
     private _shoot;
     private _pass;
     private _findInterceptor;

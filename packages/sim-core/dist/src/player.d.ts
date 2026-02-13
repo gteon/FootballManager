@@ -43,5 +43,6 @@ export declare class Ball {
     constructor();
     update(dt: number): void;
     launchGround(from: Vec2, to: Vec2, speed: number): void;
+    launchAerial(from: Vec2, to: Vec2, speed: number, peakZ: number): void;
 }
 //# sourceMappingURL=player.d.ts.map

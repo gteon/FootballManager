@@ -22,4 +22,13 @@ export class XorShift32 {
   range(lo: number, hi: number): number {
     return lo + (hi - lo) * this.nextFloat01();
   }
+
+  intRange(lo: number, hi: number): number {
+    if (hi < lo) [lo, hi] = [hi, lo];
+    return Math.floor(this.range(lo, hi + 1));
+  }
+
+  chance(p01: number): boolean {
+    return this.nextFloat01() < p01;
+  }
 }

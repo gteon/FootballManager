@@ -161,13 +161,6 @@ export class Ball {
         }
       }
     }
-
-    this.pos.y = v2.clamp(this.pos.y, BALL_RADIUS, PITCH_H - BALL_RADIUS);
-    const inGoalZone =
-      this.pos.y > PITCH_H / 2 - GOAL_W / 2 && this.pos.y < PITCH_H / 2 + GOAL_W / 2;
-    if (!inGoalZone) {
-      this.pos.x = v2.clamp(this.pos.x, BALL_RADIUS, PITCH_W - BALL_RADIUS);
-    }
   }
 
   launchGround(from: Vec2, to: Vec2, speed: number): void {
@@ -177,5 +170,16 @@ export class Ball {
     this.vz = 0;
     this.inFlight = true;
     this.isAerial = false;
+    this.bounceCount = 0;
+  }
+
+  launchAerial(from: Vec2, to: Vec2, speed: number, peakZ: number): void {
+    const dir = v2.norm(v2.sub(to, from));
+    this.vel = v2.scale(dir, speed);
+    this.vz = Math.sqrt(2 * GRAVITY * peakZ);
+    this.z = 2;
+    this.inFlight = true;
+    this.isAerial = true;
+    this.bounceCount = 0;
   }
 }

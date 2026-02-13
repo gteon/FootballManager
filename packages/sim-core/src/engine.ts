@@ -1,10 +1,18 @@
 import { Vec2, v2 } from './vector';
 import { XorShift32 } from './rng';
 import { Player, Ball, PlayerStats } from './player';
-import { PITCH_W, PITCH_H, DECISION_INTERVAL, ROLES, STATES, Z_PICKUP, GOAL_W } from './constants';
+import { PITCH_W, PITCH_H, DECISION_INTERVAL, ROLES, STATES, Z_PICKUP, GOAL_W, SEPARATION_RADIUS, PLAYER_RADIUS, MAX_PASS_DIST, AWARENESS_R } from './constants';
 
 export type MatchEvent = {
-  type: 'GOAL' | 'SAVE' | 'BALL_OUT' | 'PASS' | 'SHOT';
+  type:
+    | 'GOAL'
+    | 'SAVE'
+    | 'BALL_OUT'
+    | 'PASS'
+    | 'SHOT'
+    | 'CLEARANCE'
+    | 'HALF_TIME'
+    | 'FULL_TIME';
   data?: any;
   timestamp: number;
 };
@@ -35,6 +43,9 @@ export type EngineConfig = {
   seed: number;
   engineVersion: string;
 };
+
+const HALF_DURATION_SEC = 3 * 60;
+const FULL_DURATION_SEC = HALF_DURATION_SEC * 2;
 
 const statProfiles: Record<string, PlayerStats> = {
   GK: { pace: 45, passing: 30, shooting: 10, stamina: 50, positioning: 70, reflexes: 85 },
@@ -73,6 +84,8 @@ export class FootballEngine {
   private readonly rng: XorShift32;
   private seq = 0;
   private clockSec = 0;
+  private half: 1 | 2 = 1;
+  private finished = false;
   private readonly startedAtMs = Date.now();
   private events: MatchEvent[] = [];
 
@@ -81,9 +94,7 @@ export class FootballEngine {
   public readonly teamB: Player[];
   public readonly allPlayers: Player[];
   public score = { A: 0, B: 0 };
-  public running = false;
-  public goalCooldown = 0;
-  public resetCooldown = 0;
+  public running = true;
 
   constructor(private readonly config: EngineConfig) {
     this.rng = new XorShift32(config.seed);
@@ -91,6 +102,7 @@ export class FootballEngine {
     this.teamA = buildTeam('A', this.rng);
     this.teamB = buildTeam('B', this.rng);
     this.allPlayers = [...this.teamA, ...this.teamB];
+    this._kickoff();
   }
 
   start(): void {
@@ -102,24 +114,23 @@ export class FootballEngine {
   }
 
   tick(dtSec: number): void {
-    if (!this.running) return;
-    if (this.goalCooldown > 0) {
-      this.goalCooldown -= dtSec;
-      return;
-    }
-    if (this.resetCooldown > 0) {
-      this.resetCooldown -= dtSec;
-      this.allPlayers.forEach(p => {
-        p.targetPos = { ...p.homePos };
-        p.hasBall = false;
-      });
-      if (this.resetCooldown <= 0) {
-        this._kickoff();
-      }
-      return;
-    }
+    if (!this.running || this.finished) return;
+
+    const prevClock = this.clockSec;
 
     this.clockSec += dtSec;
+
+    if (prevClock < HALF_DURATION_SEC && this.clockSec >= HALF_DURATION_SEC) {
+      this.half = 2;
+      this.events.push({ type: 'HALF_TIME', timestamp: this.clockSec });
+    }
+
+    if (this.clockSec >= FULL_DURATION_SEC) {
+      this.finished = true;
+      this.running = false;
+      this.events.push({ type: 'FULL_TIME', timestamp: this.clockSec });
+      return;
+    }
 
     this.allPlayers.forEach(p => {
       if (p.decisionTimer <= 0) {
@@ -227,30 +238,91 @@ export class FootballEngine {
   }
 
   private _decideWithBall(player: Player, teammates: Player[], opponents: Player[], goalPos: Vec2): void {
+    const inOwnHalf = this._inOwnHalf(player);
+    const pressure = this._calcPressure(player, opponents);
+
+    if ((player.role === ROLES.DEF || player.role === ROLES.GK) && inOwnHalf) {
+      let closestOppDist = Infinity;
+      for (const op of opponents) {
+        const d = v2.dist(op.pos, player.pos);
+        if (d < closestOppDist) closestOppDist = d;
+      }
+
+      const underThreat = pressure > 0.45 || closestOppDist < 65;
+      if (underThreat && player.clearanceCooldown <= 0) {
+        this._doClearance(player, teammates);
+        return;
+      }
+    }
+
     const toGoal = v2.sub(goalPos, player.pos);
     const distToGoal = v2.len(toGoal);
-    const canShoot = distToGoal < 250;
-    const passTarget = teammates.find(t => v2.dist(t.pos, player.pos) > 80 && v2.dist(t.pos, goalPos) < distToGoal);
+
+    const myPosVal = this._positionValue(player.pos, goalPos, opponents);
 
     let valueSHOOT = 0;
-    let valuePASS = 0;
+    {
+      const maxShootDist =
+        player.role === ROLES.ATT
+          ? 280
+          : player.role === ROLES.MID
+            ? 220
+            : player.role === ROLES.WIN
+              ? 200
+              : 160;
+
+      if (distToGoal < maxShootDist) {
+        const angleRad = Math.atan2(GOAL_W, Math.max(distToGoal, 1));
+        const angleQ = v2.clamp(angleRad / (Math.PI / 3), 0, 1);
+        const clearLine = this._isLineClearRadius(player.pos, goalPos, opponents, 28);
+        const shotQuality = angleQ * (player.stats.shooting / 100) * (clearLine ? 1.0 : 0.4);
+        const ctxShoot = (distToGoal < 150 ? 1.5 : 1.0) + (pressure > 0.5 ? 0.25 : 0);
+        valueSHOOT = shotQuality * ctxShoot;
+      }
+    }
+
+    let bestPass: Player | null = null;
+    let valuePASS = -1;
+    for (const tm of teammates) {
+      if (tm.role === ROLES.GK && !inOwnHalf) continue;
+
+      const d = v2.dist(player.pos, tm.pos);
+      if (d > MAX_PASS_DIST) continue;
+      if (d < 55) continue;
+
+      const interceptRisk = this._interceptRisk(player.pos, tm.pos, opponents);
+      const passSuccessProb =
+        (player.stats.passing / 100) *
+        (1 - interceptRisk * 0.7) *
+        v2.clamp(1 - d / MAX_PASS_DIST, 0.1, 1);
+
+      const receiverPosVal = this._positionValue(tm.pos, goalPos, opponents);
+      let valueThisPass = receiverPosVal * passSuccessProb;
+
+      const openness = this._receiverOpenness(tm, opponents);
+      valueThisPass += openness * 0.08;
+
+      const progVal = this._progressValue(player.pos, tm.pos);
+      if (progVal > 0.4) valueThisPass += 0.06;
+
+      if (valueThisPass > valuePASS) {
+        valuePASS = valueThisPass;
+        bestPass = tm;
+      }
+    }
+
     let valueDRIBBLE = 0;
-
-    if (canShoot) {
-      const pressure = this._calcPressure(player, opponents);
-      valueSHOOT = (1 - pressure) * (player.stats.shooting / 100) * 0.7;
+    {
+      const dribbleDir = v2.norm(v2.sub(goalPos, player.pos));
+      const projectedPos = {
+        x: v2.clamp(player.pos.x + dribbleDir.x * player.maxSpeed * 0.4, 0, PITCH_W),
+        y: v2.clamp(player.pos.y + dribbleDir.y * player.maxSpeed * 0.4, 0, PITCH_H),
+      };
+      const projectedVal = this._positionValue(projectedPos, goalPos, opponents);
+      const dribbleFeasible = Math.pow(1 - pressure, 1.5) * (player.stats.pace / 100);
+      const posGain = v2.clamp(projectedVal - myPosVal, 0, 1);
+      valueDRIBBLE = (myPosVal * 0.4 + posGain * 0.6) * dribbleFeasible;
     }
-
-    if (passTarget) {
-      const passSuccess = (player.stats.passing / 100) * 0.8;
-      valuePASS = passSuccess * 0.6;
-    }
-
-    const myPosVal = player.team === 'A' ? player.pos.x / PITCH_W : 1 - player.pos.x / PITCH_W;
-    const posGain = 0.02;
-    const dribbleFeasible = opponents.filter(o => v2.dist(o.pos, player.pos) < 60).length < 2;
-    const posGainVal = dribbleFeasible ? posGain : -0.01;
-    valueDRIBBLE = myPosVal * 0.4 + posGainVal * 0.6;
 
     const vShoot = valueSHOOT + this.rng.range(0, 0.08);
     const vPass = valuePASS + this.rng.range(0, 0.08);
@@ -258,13 +330,126 @@ export class FootballEngine {
 
     if (vShoot >= vPass && vShoot >= vDribble && valueSHOOT > 0.05) {
       this._shoot(player, goalPos);
-    } else if (vPass >= vDribble && passTarget) {
-      this._pass(player, passTarget);
+    } else if (vPass >= vDribble && bestPass && valuePASS > 0.05) {
+      this._pass(player, bestPass);
     } else {
       const dir = v2.norm(v2.sub(goalPos, player.pos));
       player.targetPos = v2.add(player.pos, v2.scale(dir, 55 + this.rng.range(0, 35)));
       player.state = STATES.MOVING;
     }
+  }
+
+  private _positionValue(pos: Vec2, goalPos: Vec2, opponents: Player[]): number {
+    const distToGoal = v2.dist(pos, goalPos);
+    const maxDist = PITCH_W * 0.95;
+    const distScore = 1 - v2.clamp(distToGoal / maxDist, 0, 1);
+
+    const angleRad = Math.atan2(GOAL_W * 0.5, Math.max(distToGoal, 1));
+    const angleScore = v2.clamp(angleRad / (Math.PI / 3), 0, 1);
+
+    let pressureHere = 0;
+    for (const op of opponents) {
+      const d = v2.dist(op.pos, pos);
+      if (d < AWARENESS_R) pressureHere += 1 / Math.max(d * d, 1);
+    }
+    pressureHere = v2.clamp(pressureHere * 2000, 0, 1);
+    const openScore = 1 - pressureHere;
+
+    return distScore * 0.55 + angleScore * 0.3 + openScore * 0.15;
+  }
+
+  private _progressValue(from: Vec2, to: Vec2): number {
+    if (from.x === to.x && from.y === to.y) return 0;
+    return v2.clamp((to.x - from.x) / 200, -0.3, 1);
+  }
+
+  private _receiverOpenness(receiver: Player, opponents: Player[]): number {
+    let minD = Infinity;
+    for (const op of opponents) {
+      const d = v2.dist(op.pos, receiver.pos);
+      if (d < minD) minD = d;
+    }
+    return v2.clamp(minD / 100, 0, 1);
+  }
+
+  private _interceptRisk(from: Vec2, to: Vec2, opponents: Player[]): number {
+    const lineDir = v2.norm(v2.sub(to, from));
+    const lineLen = v2.dist(from, to);
+    let maxRisk = 0;
+    for (const op of opponents) {
+      const toOp = v2.sub(op.pos, from);
+      const proj = v2.clamp(v2.dot(toOp, lineDir), 0, lineLen);
+      const closest = v2.add(from, v2.scale(lineDir, proj));
+      const dist = v2.dist(op.pos, closest);
+      const risk = v2.clamp(1 - dist / 55, 0, 1);
+      if (risk > maxRisk) maxRisk = risk;
+    }
+    return maxRisk;
+  }
+
+  private _isLineClearRadius(from: Vec2, to: Vec2, opponents: Player[], radius: number): boolean {
+    const lineDir = v2.norm(v2.sub(to, from));
+    const lineLen = v2.dist(from, to);
+    for (const op of opponents) {
+      const toOp = v2.sub(op.pos, from);
+      const proj = v2.clamp(v2.dot(toOp, lineDir), 0, lineLen);
+      const closest = v2.add(from, v2.scale(lineDir, proj));
+      const dist = v2.dist(op.pos, closest);
+      if (dist < radius) return false;
+    }
+    return true;
+  }
+
+  private _inOwnHalf(player: Player): boolean {
+    return player.team === 'A' ? player.pos.x < PITCH_W / 2 : player.pos.x > PITCH_W / 2;
+  }
+
+  private _doClearance(player: Player, teammates: Player[]): void {
+    const ball = this.ball;
+
+    let bestTarget: Player | null = null;
+    let bestScore = -Infinity;
+    for (const tm of teammates) {
+      const forward = player.team === 'A' ? tm.pos.x : PITCH_W - tm.pos.x;
+      const dist = v2.dist(player.pos, tm.pos);
+      const score = forward * 0.002 - dist * 0.001;
+      if (score > bestScore) {
+        bestScore = score;
+        bestTarget = tm;
+      }
+    }
+
+    const attackingRight = player.team === 'A';
+    const clearTarget: Vec2 = bestTarget
+      ? {
+          x: v2.clamp(
+            bestTarget.pos.x + (attackingRight ? 40 : -40) + this.rng.range(-20, 20),
+            20,
+            PITCH_W - 20,
+          ),
+          y: v2.clamp(bestTarget.pos.y + this.rng.range(-25, 25), 20, PITCH_H - 20),
+        }
+      : {
+          x: attackingRight ? PITCH_W * 0.75 : PITCH_W * 0.25,
+          y: PITCH_H / 2 + this.rng.range(-60, 60),
+        };
+
+    const speed = 340 + this.rng.range(0, 60);
+    const peakZ = 130 + this.rng.range(0, 40);
+
+    player.hasBall = false;
+    ball.owner = null;
+    ball.lastKicker = player;
+    ball.launchAerial(player.pos, clearTarget, speed, peakZ);
+    player.clearanceCooldown = 1.8;
+
+    if (bestTarget) {
+      bestTarget.state = STATES.RECEIVING;
+      bestTarget.receivingTarget = { ...clearTarget };
+      bestTarget.targetPos = { ...clearTarget };
+    }
+
+    this.events.push({ type: 'CLEARANCE', data: { playerId: player.id }, timestamp: this.clockSec });
   }
 
   private _shoot(player: Player, goalPos: Vec2): void {
@@ -366,27 +551,92 @@ export class FootballEngine {
   }
 
   private _applySeparation(): void {
-    const sepRadius = 20;
-    this.allPlayers.forEach(p => {
-      const nearby = this.allPlayers.filter(o => o !== p && v2.dist(o.pos, p.pos) < sepRadius);
-      if (nearby.length === 0) return;
-      const push = v2.scale(
-        nearby.reduce((acc, o) => v2.add(acc, v2.sub(p.pos, o.pos)), { x: 0, y: 0 }),
-        0.5
-      );
-      p.targetPos = v2.add(p.targetPos, push);
-    });
+    for (let i = 0; i < this.allPlayers.length; i += 1) {
+      for (let j = i + 1; j < this.allPlayers.length; j += 1) {
+        const a = this.allPlayers[i];
+        const b = this.allPlayers[j];
+        const d = v2.dist(a.pos, b.pos);
+        if (d < SEPARATION_RADIUS && d > 0.1) {
+          const push = v2.scale(
+            v2.norm(v2.sub(a.pos, b.pos)),
+            (SEPARATION_RADIUS - d) * 0.5,
+          );
+          a.vel = v2.add(a.vel, push);
+          b.vel = v2.sub(b.vel, push);
+        }
+      }
+    }
   }
 
   private _checkPickup(): void {
-    if (this.ball.z > Z_PICKUP || this.ball.isAerial) return;
-    const nearby = this.allPlayers.filter(p => v2.dist(p.pos, this.ball.pos) < 20);
-    if (nearby.length === 0) return;
-    const picker = nearby[0];
-    picker.hasBall = true;
-    picker.state = STATES.WITH_BALL;
-    this.ball.owner = picker;
-    this.ball.inFlight = false;
+    const ball = this.ball;
+    const ballSpd = v2.len(ball.vel);
+    const lastKicker = ball.lastKicker;
+
+    for (const p of this.allPlayers) {
+      if (p.state === STATES.SHOOTING) continue;
+
+      const d = v2.dist(p.pos, ball.pos);
+      const pickupRadius = ballSpd < 60 ? 22 : 14;
+      if (d > pickupRadius + PLAYER_RADIUS) continue;
+
+      const maxPickupZ = p.role === ROLES.GK ? Z_PICKUP * 1.6 : Z_PICKUP;
+      if (ball.z > maxPickupZ) continue;
+
+      if (p.role === ROLES.GK) {
+        const shootDir = v2.norm(ball.vel);
+        const toGoal = v2.norm(
+          v2.sub(
+            { x: p.team === 'A' ? 0 : PITCH_W, y: PITCH_H / 2 },
+            ball.pos,
+          ),
+        );
+        const itsAShot = v2.dot(shootDir, toGoal) > 0.5;
+        const saveProb = (p.stats.reflexes / 100) * 0.85;
+        if (itsAShot && lastKicker && lastKicker.team !== p.team) {
+          if (this.rng.chance(saveProb)) {
+            this.events.push({ type: 'SAVE', data: { playerId: p.id }, timestamp: this.clockSec });
+            p.hasBall = true;
+            p.state = STATES.WITH_BALL;
+            ball.owner = p;
+            ball.vel = { x: 0, y: 0 };
+            ball.vz = 0;
+            ball.z = 0;
+            ball.inFlight = false;
+            ball.isAerial = false;
+            p.decisionTimer = 0;
+          }
+          return;
+        }
+      }
+
+      if (ball.inFlight && ballSpd > 40) {
+        const isDesignatedReceiver =
+          p.state === STATES.RECEIVING &&
+          Boolean(p.receivingTarget) &&
+          d < pickupRadius + PLAYER_RADIUS;
+
+        const isOpponentIntercepting =
+          Boolean(lastKicker) &&
+          lastKicker?.team !== p.team &&
+          d < 18 &&
+          !ball.isAerial;
+
+        if (!isDesignatedReceiver && !isOpponentIntercepting) continue;
+      }
+
+      p.hasBall = true;
+      p.state = STATES.WITH_BALL;
+      ball.owner = p;
+      ball.vel = { x: 0, y: 0 };
+      ball.vz = 0;
+      ball.z = 0;
+      ball.inFlight = false;
+      ball.isAerial = false;
+      p.decisionTimer = 0;
+      p.receivingTarget = null;
+      return;
+    }
   }
 
   private _checkGoal(): void {
@@ -407,14 +657,16 @@ export class FootballEngine {
       return;
     }
 
-    this.goalCooldown = 2;
-    this.resetCooldown = 3;
+    this.allPlayers.forEach(p => {
+      p.hasBall = false;
+      p.targetPos = { ...p.homePos };
+    });
+    this._kickoff();
   }
 
   private _checkBallOut(): void {
     const out = this.ball.pos.x < 0 || this.ball.pos.x > PITCH_W || this.ball.pos.y < 0 || this.ball.pos.y > PITCH_H;
     if (!out) return;
-    if (this.goalCooldown > 0 || this.resetCooldown > 0) return;
 
     this.events.push({ type: 'BALL_OUT', data: { pos: { ...this.ball.pos } }, timestamp: this.clockSec });
 
