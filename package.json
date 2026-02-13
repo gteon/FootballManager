@@ -1,0 +1,29 @@
+{
+  "name": "footballmanager",
+  "version": "1.0.0",
+  "description": "",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -ws",
+    "infra:up": "docker compose -f infra/docker-compose.yml up",
+    "infra:down": "docker compose -f infra/docker-compose.yml down",
+    "dev:match": "npm -w services/match-service run start:dev",
+    "dev:sim": "npm -w services/simulation-service run start:dev",
+    "dev:stream": "npm -w services/stream-service run start:dev",
+    "dev:league": "npm -w services/league-service run start:dev",
+    "dev:web": "npm -w apps/web run dev",
+    "dev:mvp": "npm -w services/match-service run start:dev & npm -w services/simulation-service run start:dev & npm -w services/stream-service run start:dev & npm -w apps/web run dev",
+    "build": "npm run build -ws",
+    "test": "npm run test -ws",
+    "lint": "npm run lint -ws",
+    "format": "npm run format -ws"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

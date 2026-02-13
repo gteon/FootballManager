@@ -1,0 +1,24 @@
+{
+  "name": "@footballmanager/sim-core",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "echo \"no lint\" && exit 0",
+    "format": "echo \"no format\" && exit 0"
+  },
+  "dependencies": {
+    "@footballmanager/contracts": "0.0.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vitest": "^2.1.9"
+  }
+}

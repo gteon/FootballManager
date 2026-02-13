@@ -1,0 +1,23 @@
+{
+  "name": "@footballmanager/contracts",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "echo \"no tests\" && exit 0",
+    "lint": "echo \"no lint\" && exit 0",
+    "format": "echo \"no format\" && exit 0"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
