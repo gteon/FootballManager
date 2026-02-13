@@ -2,6 +2,8 @@
 
 Monorepo **npm workspaces**.
 
+Voir aussi: `analyse de l'existant.md`.
+
 ## MVP#1 : Simulation server-authoritative + streaming live
 
 ### Services
@@ -9,6 +11,7 @@ Monorepo **npm workspaces**.
 - `match-service` (REST) : crée et démarre des matchs. Publie `evt.match.started`.
 - `simulation-service` : consomme `evt.match.started`, exécute le moteur déterministe et publie `stream.match.snapshot` (10Hz).
 - `stream-service` (WebSocket) : `joinMatch`, forward des snapshots vers les clients.
+- `league-service` (REST) : lobby/league, publie `cmd.match.create` et consomme `evt.match.created`.
 - `web` (React + Vite + Tailwind + shadcn-style) : UI pour créer/démarrer/rejoindre un match et afficher le flux.
 
 ### Ports (dev)
@@ -16,6 +19,7 @@ Monorepo **npm workspaces**.
 - match-service: `http://localhost:3001`
 - simulation-service: `http://localhost:3002`
 - stream-service: `http://localhost:3003`
+- league-service: `http://localhost:3004`
 - web: `http://localhost:5173`
 
 ## Prérequis
@@ -35,7 +39,7 @@ npm install
 docker compose -f infra/docker-compose.yml up
 ```
 
-## Lancer l'app (4 terminaux)
+## Lancer l'app (5 terminaux)
 
 ### Match service
 
@@ -53,6 +57,12 @@ npm -w services/simulation-service run start:dev
 
 ```bash
 npm -w services/stream-service run start:dev
+```
+
+### League service
+
+```bash
+npm -w services/league-service run start:dev
 ```
 
 ### Web

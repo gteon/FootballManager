@@ -360,36 +360,61 @@ export class FootballEngine {
     _shoot(player, goalPos) {
         const goalCY = PITCH_H / 2;
         const playerOffsetY = player.pos.y - goalCY;
-        const aimY = playerOffsetY > 0 ? goalCY + this.rng.range(8, 28) : goalCY - this.rng.range(8, 28);
+        const aimY = playerOffsetY > 0
+            ? goalCY + this.rng.range(8, 28)
+            : goalCY - this.rng.range(8, 28);
         const target = { x: goalPos.x, y: aimY };
         const dist = v2.dist(player.pos, target);
-        const opponents = this.allPlayers.filter(p => p.team !== player.team);
+        const opponents = this.allPlayers.filter((p) => p.team !== player.team);
         const pressure = this._calcPressure(player, opponents);
         const maxError = 0.04 + pressure * 0.14 + (dist / 600) * 0.06;
         const errorAngle = this.rng.range(-maxError, maxError);
         const baseDir = v2.norm(v2.sub(target, player.pos));
         const cos = Math.cos(errorAngle);
         const sin = Math.sin(errorAngle);
-        const shootDir = { x: baseDir.x * cos - baseDir.y * sin, y: baseDir.x * sin + baseDir.y * cos };
-        const speed = 340 + this.rng.range(0, 60);
-        this.ball.launchGround(player.pos, v2.add(player.pos, v2.scale(shootDir, 1000)), speed);
-        this.ball.lastKicker = player;
+        const finalDir = {
+            x: baseDir.x * cos - baseDir.y * sin,
+            y: baseDir.x * sin + baseDir.y * cos,
+        };
+        const speed = 420 + (player.stats.shooting / 100) * 160 - (dist / 300) * 60;
         player.hasBall = false;
         this.ball.owner = null;
+        this.ball.lastKicker = player;
+        this.ball.target = target;
+        const peakZ = v2.clamp(dist * 0.12, 10, 60);
+        const finalTarget = {
+            x: player.pos.x + finalDir.x * dist,
+            y: player.pos.y + finalDir.y * dist,
+        };
+        this.ball.launchAerial(player.pos, finalTarget, speed, peakZ);
         player.state = STATES.SHOOTING;
-        this.events.push({ type: 'SHOT', data: { playerId: player.id, target }, timestamp: this.clockSec });
+        this.events.push({
+            type: 'SHOT',
+            data: { playerId: player.id, target },
+            timestamp: this.clockSec,
+        });
     }
     _pass(player, receiver) {
         const ball = this.ball;
-        const isThrough = v2.dist(player.pos, receiver.pos) > 200;
-        const flightTime = v2.dist(player.pos, receiver.pos) / 300;
-        const receiverSpeed = receiver.maxSpeed * 0.7;
+        const d = v2.dist(player.pos, receiver.pos);
+        const opponents = this.allPlayers.filter((p) => p.team !== player.team);
+        const interceptRisk = this._interceptRisk(player.pos, receiver.pos, opponents);
+        const isThrough = this._progressValue(player.pos, receiver.pos) > 0.55;
+        const speed = 280 + (d / MAX_PASS_DIST) * 100;
         let landingPos;
         if (isThrough) {
-            const runDir = v2.norm(v2.sub(receiver.targetPos, receiver.pos));
+            const flightTime = d / (speed * 0.72);
+            const receiverSpeed = receiver.maxSpeed * 0.85;
+            const runDir = v2.norm(receiver.vel.x !== 0 || receiver.vel.y !== 0
+                ? receiver.vel
+                : v2.sub(receiver.targetPos, receiver.pos));
             landingPos = {
-                x: v2.clamp(receiver.pos.x + runDir.x * receiverSpeed * flightTime + this.rng.range(-12, 12), 20, PITCH_W - 20),
-                y: v2.clamp(receiver.pos.y + runDir.y * receiverSpeed * flightTime + this.rng.range(-10, 10), 20, PITCH_H - 20),
+                x: v2.clamp(receiver.pos.x +
+                    runDir.x * receiverSpeed * flightTime +
+                    this.rng.range(-12, 12), 20, PITCH_W - 20),
+                y: v2.clamp(receiver.pos.y +
+                    runDir.y * receiverSpeed * flightTime +
+                    this.rng.range(-10, 10), 20, PITCH_H - 20),
             };
         }
         else {
@@ -398,25 +423,26 @@ export class FootballEngine {
                 y: receiver.pos.y + this.rng.range(-14, 14),
             };
         }
-        const opponents = this.allPlayers.filter(p => p.team !== player.team);
-        const interceptor = this._findInterceptor(player.pos, landingPos, opponents);
-        const interceptRisk = interceptor ? 0.4 : 0.05;
+        player.hasBall = false;
+        ball.owner = null;
+        ball.lastKicker = player;
+        if (isThrough) {
+            ball.launchAerial(player.pos, landingPos, speed * 0.85, 55);
+        }
+        else {
+            ball.launchGround(player.pos, landingPos, speed);
+        }
+        receiver.state = STATES.RECEIVING;
+        receiver.receivingTarget = { ...landingPos };
+        receiver.targetPos = { ...landingPos };
         if (!isThrough) {
-            if (interceptor && this.rng.nextFloat01() < interceptRisk * 0.65) {
+            const interceptor = this._findInterceptor(player.pos, landingPos, opponents);
+            if (interceptor && this.rng.chance(interceptRisk * 0.65)) {
                 interceptor.state = STATES.RECEIVING;
                 interceptor.receivingTarget = { ...landingPos };
                 interceptor.targetPos = { ...landingPos };
             }
         }
-        const speed = 280 + this.rng.range(0, 40);
-        ball.launchGround(player.pos, landingPos, speed);
-        ball.lastKicker = player;
-        player.hasBall = false;
-        ball.owner = null;
-        player.state = STATES.MOVING;
-        receiver.state = STATES.RECEIVING;
-        receiver.receivingTarget = { ...landingPos };
-        receiver.targetPos = { ...landingPos };
         this.events.push({ type: 'PASS', data: { from: player.id, to: receiver.id }, timestamp: this.clockSec });
     }
     _findInterceptor(from, to, opponents) {
@@ -439,8 +465,13 @@ export class FootballEngine {
         return v2.dist(p, proj);
     }
     _calcPressure(player, opponents) {
-        const close = opponents.filter(o => v2.dist(o.pos, player.pos) < 80);
-        return Math.min(1, close.length * 0.3);
+        let p = 0;
+        opponents.forEach((op) => {
+            const d = v2.dist(op.pos, player.pos);
+            if (d < AWARENESS_R)
+                p += 1 / Math.max(d * d, 1);
+        });
+        return v2.clamp(p * 2000, 0, 1);
     }
     _applySeparation() {
         for (let i = 0; i < this.allPlayers.length; i += 1) {
