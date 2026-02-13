@@ -44,7 +44,7 @@ function deriveSeed(cmd) {
         return cmd.seed;
     const key = `seed|${cmd.leagueId}|${cmd.round}|${cmd.aId}|${cmd.bId}|${cmd.engineVersion}`;
     const h = fnv1a32(key);
-    return (h | 0) || 1;
+    return h | 0 || 1;
 }
 let MatchOrchestrator = MatchOrchestrator_1 = class MatchOrchestrator {
     nats;

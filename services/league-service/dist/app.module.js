@@ -10,12 +10,15 @@ exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
 const league_module_1 = require("./league/league.module");
+const nats_module_1 = require("./nats/nats.module");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
-        imports: [config_1.ConfigModule.forRoot({ isGlobal: true }), league_module_1.LeagueModule],
+        imports: [config_1.ConfigModule.forRoot({ isGlobal: true }), nats_module_1.NatsModule, league_module_1.LeagueModule],
+        controllers: [],
+        providers: [],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map
