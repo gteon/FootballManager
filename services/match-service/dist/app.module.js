@@ -9,11 +9,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
 const config_1 = require("@nestjs/config");
-const app_controller_1 = require("./app.controller");
-const app_service_1 = require("./app.service");
 const nats_module_1 = require("./nats/nats.module");
-const matches_controller_1 = require("./matches/matches.controller");
-const matches_service_1 = require("./matches/matches.service");
 const league_matches_controller_1 = require("./matches/league-matches.controller");
 const match_query_controller_1 = require("./matches/match-query.controller");
 const match_registry_service_1 = require("./matches/match-registry.service");
@@ -24,18 +20,8 @@ exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [config_1.ConfigModule.forRoot({ isGlobal: true }), nats_module_1.NatsModule],
-        controllers: [
-            app_controller_1.AppController,
-            matches_controller_1.MatchesController,
-            league_matches_controller_1.LeagueMatchesController,
-            match_query_controller_1.MatchQueryController,
-        ],
-        providers: [
-            app_service_1.AppService,
-            matches_service_1.MatchesService,
-            match_registry_service_1.MatchRegistryService,
-            match_orchestrator_service_1.MatchOrchestrator,
-        ],
+        controllers: [league_matches_controller_1.LeagueMatchesController, match_query_controller_1.MatchQueryController],
+        providers: [match_registry_service_1.MatchRegistryService, match_orchestrator_service_1.MatchOrchestrator],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map

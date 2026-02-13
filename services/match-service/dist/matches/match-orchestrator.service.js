@@ -23,8 +23,28 @@ const CmdMatchCreateSchema = zod_1.z.object({
     engineVersion: zod_1.z.string().min(1).default('v0'),
     seed: zod_1.z.number().int().optional(),
 });
-function makeId(prefix) {
-    return `${prefix}_${Date.now()}_${Math.floor(Math.random() * 1_000_000)}`;
+function fnv1a32(input) {
+    let hash = 0x811c9dc5;
+    for (let i = 0; i < input.length; i += 1) {
+        hash ^= input.charCodeAt(i);
+        hash = Math.imul(hash, 0x01000193);
+    }
+    return hash >>> 0;
+}
+function toBase36(u32) {
+    return (u32 >>> 0).toString(36);
+}
+function deriveMatchId(cmd) {
+    const key = `${cmd.leagueId}|${cmd.round}|${cmd.aId}|${cmd.bId}`;
+    const h = fnv1a32(key);
+    return `m_${toBase36(h)}`;
+}
+function deriveSeed(cmd) {
+    if (typeof cmd.seed === 'number' && Number.isInteger(cmd.seed))
+        return cmd.seed;
+    const key = `seed|${cmd.leagueId}|${cmd.round}|${cmd.aId}|${cmd.bId}|${cmd.engineVersion}`;
+    const h = fnv1a32(key);
+    return (h | 0) || 1;
 }
 let MatchOrchestrator = MatchOrchestrator_1 = class MatchOrchestrator {
     nats;
@@ -37,8 +57,8 @@ let MatchOrchestrator = MatchOrchestrator_1 = class MatchOrchestrator {
     onModuleInit() {
         this.nats.subscribeJson('cmd.match.create', (raw) => {
             const cmd = CmdMatchCreateSchema.parse(raw);
-            const matchId = makeId('m');
-            const seed = cmd.seed ?? Math.floor(Math.random() * 2_000_000_000) - 1_000_000_000;
+            const matchId = deriveMatchId(cmd);
+            const seed = deriveSeed(cmd);
             const engineVersion = cmd.engineVersion;
             this.registry.upsert({
                 matchId,
