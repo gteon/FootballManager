@@ -4,6 +4,7 @@ export declare class SimulationRunner implements OnModuleInit {
     private readonly nats;
     private readonly logger;
     private readonly engines;
+    private readonly timers;
     constructor(nats: NatsService);
     onModuleInit(): void;
     private runLoop;

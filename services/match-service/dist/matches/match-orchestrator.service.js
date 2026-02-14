@@ -23,6 +23,10 @@ const CmdMatchCreateSchema = zod_1.z.object({
     engineVersion: zod_1.z.string().min(1).default('v0'),
     seed: zod_1.z.number().int().optional(),
 });
+const MatchFinishedEventSchema = zod_1.z.object({
+    matchId: zod_1.z.string().min(1),
+    finishedAtMs: zod_1.z.number().int().nonnegative(),
+});
 function fnv1a32(input) {
     let hash = 0x811c9dc5;
     for (let i = 0; i < input.length; i += 1) {
@@ -87,6 +91,10 @@ let MatchOrchestrator = MatchOrchestrator_1 = class MatchOrchestrator {
                 seed,
                 engineVersion,
             });
+        });
+        this.nats.subscribeJson('evt.match.finished', (raw) => {
+            const evt = MatchFinishedEventSchema.parse(raw);
+            this.registry.markFinished(evt.matchId, evt.finishedAtMs);
         });
         this.logger.log('Listening cmd.match.create');
     }

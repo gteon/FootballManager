@@ -42,6 +42,8 @@ let LeagueService = class LeagueService {
     userToLobby = new Map();
     userToLeague = new Map();
     userToAssignedMatch = new Map();
+    matchResults = new Map();
+    leagueCountdowns = new Map();
     constructor(nats) {
         this.nats = nats;
     }
@@ -72,6 +74,48 @@ let LeagueService = class LeagueService {
                     url: `http://localhost:5173/match/${matchId}`,
                 });
             }
+        });
+        this.nats.subscribeJson('evt.match.finished', (evt) => {
+            const matchId = String(evt.matchId ?? '');
+            if (!matchId)
+                return;
+            this.matchResults.set(matchId, {
+                score: { A: evt.score.A, B: evt.score.B },
+                winner: evt.winner,
+                finishedAtMs: evt.finishedAtMs,
+            });
+            const league = this.findLeagueByMatchId(matchId);
+            if (!league)
+                return;
+            const matchEntry = league.matches.find((m) => m.matchId === matchId);
+            if (!matchEntry)
+                return;
+            const round = matchEntry.round;
+            const roundMatches = league.matches
+                .filter((m) => m.round === round)
+                .filter((m) => Boolean(m.matchId));
+            const allFinished = roundMatches.length > 0 &&
+                roundMatches.every((m) => this.matchResults.has(m.matchId));
+            if (!allFinished)
+                return;
+            const existing = this.leagueCountdowns.get(league.leagueId);
+            if (existing && existing.round === round + 1)
+                return;
+            const startsAtMs = Date.now() + 5 * 60_000;
+            const timer = setTimeout(() => {
+                this.leagueCountdowns.delete(league.leagueId);
+                this.createNextRound(league.leagueId, round);
+            }, 5 * 60_000);
+            this.leagueCountdowns.set(league.leagueId, {
+                round: round + 1,
+                startsAtMs,
+                timer,
+            });
+            this.nats.publishJson('evt.league.next_round_countdown', {
+                leagueId: league.leagueId,
+                round: round + 1,
+                startsAtMs,
+            });
         });
     }
     join(userId) {
@@ -151,6 +195,66 @@ let LeagueService = class LeagueService {
         if (!league)
             throw new Error('league not found');
         return league;
+    }
+    findLeagueByMatchId(matchId) {
+        for (const league of this.leagues.values()) {
+            if (league.matches.some((m) => m.matchId === matchId))
+                return league;
+        }
+        return null;
+    }
+    createNextRound(leagueId, finishedRound) {
+        const league = this.leagues.get(leagueId);
+        if (!league)
+            return;
+        const currentRound = finishedRound;
+        const nextRound = currentRound + 1;
+        const roundMatches = league.matches
+            .filter((m) => m.round === currentRound)
+            .filter((m) => Boolean(m.matchId));
+        const winners = [];
+        for (const m of roundMatches) {
+            const res = this.matchResults.get(m.matchId);
+            if (!res)
+                return;
+            if (res.winner === 'A')
+                winners.push(m.aId);
+            else if (res.winner === 'B')
+                winners.push(m.bId);
+            else
+                winners.push(m.aId);
+        }
+        if (winners.length < 2) {
+            this.nats.publishJson('evt.league.finished', {
+                leagueId,
+                winnerId: winners[0] ?? null,
+            });
+            return;
+        }
+        const rng = new XorShift32(((league.createdAtMs & 0xffffffff) ^ (nextRound * 0x9e3779b9)) | 0);
+        const newMatches = [];
+        for (let i = 0; i < winners.length; i += 2) {
+            const aId = winners[i];
+            const bId = winners[i + 1];
+            if (!aId || !bId)
+                break;
+            newMatches.push({ aId, bId, round: nextRound });
+            league.matches.push({ aId, bId, round: nextRound });
+            const seed = rng.nextInt(-1_000_000_000, 1_000_000_000);
+            this.nats.publishJson('cmd.match.create', {
+                leagueId,
+                round: nextRound,
+                aId,
+                bId,
+                seed,
+                engineVersion: 'v0',
+            });
+        }
+        this.nats.publishJson('evt.league.round_created', {
+            leagueId,
+            round: nextRound,
+            matches: newMatches,
+        });
     }
     closeLobby(expectedLobbyId) {
         const lobby = this.lobby;

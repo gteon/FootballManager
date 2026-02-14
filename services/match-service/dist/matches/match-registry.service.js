@@ -20,6 +20,18 @@ let MatchRegistryService = class MatchRegistryService {
     get(matchId) {
         return this.matches.get(matchId);
     }
+    markFinished(matchId, finishedAtMs) {
+        const prev = this.matches.get(matchId);
+        if (!prev)
+            return;
+        if (prev.status === 'finished')
+            return;
+        this.upsert({
+            ...prev,
+            status: 'finished',
+            finishedAtMs,
+        });
+    }
     listByLeague(leagueId) {
         const ids = this.leagueToMatches.get(leagueId);
         if (!ids)

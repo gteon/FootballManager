@@ -1,5 +1,5 @@
 import { v2 } from './vector';
-import { DECISION_INTERVAL, PLAYER_RADIUS, PITCH_W, PITCH_H, BALL_RADIUS, GOAL_W, GRAVITY, BOUNCE_DAMP } from './constants';
+import { DECISION_INTERVAL, PLAYER_RADIUS, PITCH_W, PITCH_H, GRAVITY, BOUNCE_DAMP } from './constants';
 export class Player {
     id;
     team;
@@ -131,11 +131,6 @@ export class Ball {
                 }
             }
         }
-        this.pos.y = v2.clamp(this.pos.y, BALL_RADIUS, PITCH_H - BALL_RADIUS);
-        const inGoalZone = this.pos.y > PITCH_H / 2 - GOAL_W / 2 && this.pos.y < PITCH_H / 2 + GOAL_W / 2;
-        if (!inGoalZone) {
-            this.pos.x = v2.clamp(this.pos.x, BALL_RADIUS, PITCH_W - BALL_RADIUS);
-        }
     }
     launchGround(from, to, speed) {
         const dir = v2.norm(v2.sub(to, from));
@@ -144,6 +139,16 @@ export class Ball {
         this.vz = 0;
         this.inFlight = true;
         this.isAerial = false;
+        this.bounceCount = 0;
+    }
+    launchAerial(from, to, speed, peakZ) {
+        const dir = v2.norm(v2.sub(to, from));
+        this.vel = v2.scale(dir, speed);
+        this.vz = Math.sqrt(2 * GRAVITY * peakZ);
+        this.z = 2;
+        this.inFlight = true;
+        this.isAerial = true;
+        this.bounceCount = 0;
     }
 }
 //# sourceMappingURL=player.js.map

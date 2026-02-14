@@ -48,11 +48,15 @@ export declare class LeagueService implements OnModuleInit {
     private readonly userToLobby;
     private readonly userToLeague;
     private readonly userToAssignedMatch;
+    private readonly matchResults;
+    private readonly leagueCountdowns;
     constructor(nats: NatsService);
     onModuleInit(): void;
     join(userId: string): JoinResult;
     getStatus(userId: string): StatusResult;
     getLeague(leagueId: string): League;
+    private findLeagueByMatchId;
+    private createNextRound;
     private closeLobby;
     openLobbiesCount(): number;
 }

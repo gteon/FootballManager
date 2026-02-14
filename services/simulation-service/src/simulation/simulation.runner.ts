@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createEngine, FootballEngine, type EngineSnapshot } from '@footballmanager/sim-core';
 import type {
+  MatchFinishedEvent,
   MatchStartedEvent,
   MatchSnapshot,
 } from '@footballmanager/contracts';
@@ -10,6 +11,7 @@ import { NatsService } from '../nats/nats.service';
 export class SimulationRunner implements OnModuleInit {
   private readonly logger = new Logger(SimulationRunner.name);
   private readonly engines = new Map<string, FootballEngine>();
+  private readonly timers = new Map<string, NodeJS.Timeout>();
 
   constructor(private readonly nats: NatsService) {}
 
@@ -68,6 +70,9 @@ export class SimulationRunner implements OnModuleInit {
             x: engineSnap.ball.x,
             y: engineSnap.ball.y,
             z: engineSnap.ball.z,
+            vx: engineSnap.ball.vx,
+            vy: engineSnap.ball.vy,
+            vz: engineSnap.ball.vz,
           },
           players: engineSnap.players.map(p => ({
             id: p.id,
@@ -80,10 +85,35 @@ export class SimulationRunner implements OnModuleInit {
             state: p.state,
             hasBall: p.hasBall,
           })),
+          events: engineSnap.events,
         };
         
         this.nats.publishJson('stream.match.snapshot', snap);
+
+        const fullTime = engineSnap.events.find((ev) => ev.type === 'FULL_TIME');
+        if (fullTime) {
+          const score = engineSnap.score;
+          const winner: MatchFinishedEvent['winner'] =
+            score.A > score.B ? 'A' : score.B > score.A ? 'B' : 'DRAW';
+
+          this.nats.publishJson('evt.match.finished', {
+            matchId: engineSnap.matchId,
+            score,
+            winner,
+            finishedAtMs: Date.now(),
+          } satisfies MatchFinishedEvent);
+
+          const t = this.timers.get(matchId);
+          if (t) clearInterval(t);
+          this.timers.delete(matchId);
+          this.engines.delete(matchId);
+          this.logger.log(`Finished match ${matchId} (${score.A}-${score.B})`);
+        }
       }
     }, 1000 / tickHz);
+
+    const prev = this.timers.get(matchId);
+    if (prev) clearInterval(prev);
+    this.timers.set(matchId, interval);
   }
 }

@@ -17,6 +17,7 @@ export declare class MatchRegistryService {
     private readonly leagueToMatches;
     upsert(record: MatchRecord): void;
     get(matchId: string): MatchRecord | undefined;
+    markFinished(matchId: string, finishedAtMs: number): void;
     listByLeague(leagueId: string): MatchRecord[];
     listInProgressByLeague(leagueId: string): MatchRecord[];
     count(): number;

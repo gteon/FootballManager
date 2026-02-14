@@ -14,6 +14,13 @@ const CmdMatchCreateSchema = z.object({
 
 type CmdMatchCreate = z.infer<typeof CmdMatchCreateSchema>;
 
+const MatchFinishedEventSchema = z.object({
+  matchId: z.string().min(1),
+  finishedAtMs: z.number().int().nonnegative(),
+});
+
+type MatchFinishedEvent = z.infer<typeof MatchFinishedEventSchema>;
+
 function fnv1a32(input: string): number {
   let hash = 0x811c9dc5;
   for (let i = 0; i < input.length; i += 1) {
@@ -90,6 +97,11 @@ export class MatchOrchestrator implements OnModuleInit {
         seed,
         engineVersion,
       });
+    });
+
+    this.nats.subscribeJson<MatchFinishedEvent>('evt.match.finished', (raw) => {
+      const evt = MatchFinishedEventSchema.parse(raw);
+      this.registry.markFinished(evt.matchId, evt.finishedAtMs);
     });
 
     this.logger.log('Listening cmd.match.create');

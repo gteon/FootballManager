@@ -33,6 +33,18 @@ export class MatchRegistryService {
     return this.matches.get(matchId);
   }
 
+  markFinished(matchId: string, finishedAtMs: number): void {
+    const prev = this.matches.get(matchId);
+    if (!prev) return;
+    if (prev.status === 'finished') return;
+
+    this.upsert({
+      ...prev,
+      status: 'finished',
+      finishedAtMs,
+    });
+  }
+
   listByLeague(leagueId: string): MatchRecord[] {
     const ids = this.leagueToMatches.get(leagueId);
     if (!ids) return [];

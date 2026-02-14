@@ -12,7 +12,7 @@ type MatchSnapshot = {
   serverTimeMs: number;
   clockSec: number;
   score: { A: number; B: number };
-  ball: { x: number; y: number; z: number };
+  ball: { x: number; y: number; z: number; vx: number; vy: number; vz: number };
   players: Array<{
     id: string;
     team: 'A' | 'B';
@@ -24,6 +24,7 @@ type MatchSnapshot = {
     state: string;
     hasBall: boolean;
   }>;
+  events: Array<{ type: string; timestamp: number; data?: unknown }>;
 };
 
 const STREAM_WS = 'http://localhost:3003';
@@ -39,6 +40,10 @@ export function MatchPage() {
   const location = useLocation();
 
   const [snapshot, setSnapshot] = useState<MatchSnapshot | null>(null);
+  const [recentEvents, setRecentEvents] = useState<
+    Array<{ type: string; timestamp: number; data?: unknown }>
+  >([]);
+  const [goalFlash, setGoalFlash] = useState(false);
   const state = (location.state ?? null) as LocationState | null;
   const [liveMatches, setLiveMatches] = useState<
     Array<{ matchId: string; url: string }>
@@ -49,6 +54,18 @@ export function MatchPage() {
   useEffect(() => {
     socket.on('snapshot', (snap: MatchSnapshot) => {
       setSnapshot(snap);
+
+      if (Array.isArray(snap.events) && snap.events.length > 0) {
+        setRecentEvents((prev) => {
+          const next = [...prev, ...snap.events];
+          return next.slice(-12);
+        });
+
+        if (snap.events.some((e) => e.type === 'GOAL')) {
+          setGoalFlash(true);
+          window.setTimeout(() => setGoalFlash(false), 650);
+        }
+      }
     });
 
     return () => {
@@ -129,11 +146,43 @@ export function MatchPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <PitchCanvas snapshot={snapshot} />
+                <div className="relative">
+                  <PitchCanvas snapshot={snapshot} />
+                  <div
+                    className={`pointer-events-none absolute inset-0 flex items-center justify-center transition-opacity duration-100 ${goalFlash ? 'opacity-100' : 'opacity-0'}`}
+                  >
+                    <div className="text-5xl font-black tracking-widest text-yellow-300 drop-shadow">
+                      GOAL
+                    </div>
+                  </div>
+                </div>
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
                   <div>clock: {snapshot ? `${snapshot.clockSec.toFixed(2)}s` : '–'}</div>
                   <div className="font-mono">seq: {snapshot?.seq ?? '–'}</div>
                 </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Events</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                {recentEvents.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">(no events yet)</div>
+                ) : (
+                  recentEvents
+                    .slice()
+                    .reverse()
+                    .map((e, idx) => (
+                      <div key={`${e.timestamp}-${idx}`} className="font-mono text-xs">
+                        <span className="text-muted-foreground">
+                          {e.timestamp.toFixed(2)}
+                        </span>{' '}
+                        <span>{e.type}</span>
+                      </div>
+                    ))
+                )}
               </CardContent>
             </Card>
           </div>

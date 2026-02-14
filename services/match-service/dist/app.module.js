@@ -21,7 +21,11 @@ exports.AppModule = AppModule;
 exports.AppModule = AppModule = __decorate([
     (0, common_1.Module)({
         imports: [config_1.ConfigModule.forRoot({ isGlobal: true }), nats_module_1.NatsModule],
-        controllers: [league_matches_controller_1.LeagueMatchesController, match_query_controller_1.MatchQueryController, health_controller_1.HealthController],
+        controllers: [
+            league_matches_controller_1.LeagueMatchesController,
+            match_query_controller_1.MatchQueryController,
+            health_controller_1.HealthController,
+        ],
         providers: [match_registry_service_1.MatchRegistryService, match_orchestrator_service_1.MatchOrchestrator],
     })
 ], AppModule);

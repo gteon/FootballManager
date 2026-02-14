@@ -15,6 +15,7 @@ let SimulationRunner = SimulationRunner_1 = class SimulationRunner {
     nats;
     logger = new Logger(SimulationRunner_1.name);
     engines = new Map();
+    timers = new Map();
     constructor(nats) {
         this.nats = nats;
     }
@@ -63,6 +64,9 @@ let SimulationRunner = SimulationRunner_1 = class SimulationRunner {
                         x: engineSnap.ball.x,
                         y: engineSnap.ball.y,
                         z: engineSnap.ball.z,
+                        vx: engineSnap.ball.vx,
+                        vy: engineSnap.ball.vy,
+                        vz: engineSnap.ball.vz,
                     },
                     players: engineSnap.players.map(p => ({
                         id: p.id,
@@ -75,10 +79,32 @@ let SimulationRunner = SimulationRunner_1 = class SimulationRunner {
                         state: p.state,
                         hasBall: p.hasBall,
                     })),
+                    events: engineSnap.events,
                 };
                 this.nats.publishJson('stream.match.snapshot', snap);
+                const fullTime = engineSnap.events.find((ev) => ev.type === 'FULL_TIME');
+                if (fullTime) {
+                    const score = engineSnap.score;
+                    const winner = score.A > score.B ? 'A' : score.B > score.A ? 'B' : 'DRAW';
+                    this.nats.publishJson('evt.match.finished', {
+                        matchId: engineSnap.matchId,
+                        score,
+                        winner,
+                        finishedAtMs: Date.now(),
+                    });
+                    const t = this.timers.get(matchId);
+                    if (t)
+                        clearInterval(t);
+                    this.timers.delete(matchId);
+                    this.engines.delete(matchId);
+                    this.logger.log(`Finished match ${matchId} (${score.A}-${score.B})`);
+                }
             }
         }, 1000 / tickHz);
+        const prev = this.timers.get(matchId);
+        if (prev)
+            clearInterval(prev);
+        this.timers.set(matchId, interval);
     }
 };
 SimulationRunner = SimulationRunner_1 = __decorate([

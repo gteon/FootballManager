@@ -4,4 +4,6 @@ export declare class XorShift32 {
     nextU32(): number;
     nextFloat01(): number;
     range(lo: number, hi: number): number;
+    intRange(lo: number, hi: number): number;
+    chance(p01: number): boolean;
 }

@@ -26,7 +26,7 @@ type MatchSnapshot = {
   serverTimeMs: number;
   clockSec: number;
   score: { A: number; B: number };
-  ball: { x: number; y: number; z: number };
+  ball: { x: number; y: number; z: number; vx: number; vy: number; vz: number };
   players: Array<{
     id: string;
     team: 'A' | 'B';
@@ -38,6 +38,7 @@ type MatchSnapshot = {
     state: string;
     hasBall: boolean;
   }>;
+  events: Array<{ type: string; timestamp: number; data?: unknown }>;
 };
 
 const MATCH_API = 'http://localhost:3001';

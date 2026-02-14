@@ -48,6 +48,7 @@ export declare class FootballEngine {
     private finished;
     private readonly startedAtMs;
     private events;
+    private halfTimeBreakRemainingSec;
     readonly ball: Ball;
     readonly teamA: Player[];
     readonly teamB: Player[];

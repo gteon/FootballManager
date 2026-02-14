@@ -1,7 +1,7 @@
 import { v2 } from './vector';
 import { XorShift32 } from './rng';
 import { Player, Ball } from './player';
-import { PITCH_W, PITCH_H, DECISION_INTERVAL, ROLES, STATES, Z_PICKUP, GOAL_W, SEPARATION_RADIUS, PLAYER_RADIUS, MAX_PASS_DIST, AWARENESS_R } from './constants';
+import { PITCH_W, PITCH_H, DECISION_INTERVAL, ROLES, STATES, Z_PICKUP, GOAL_W, GOAL_DEPTH, SEPARATION_RADIUS, PLAYER_RADIUS, MAX_PASS_DIST, AWARENESS_R } from './constants';
 const HALF_DURATION_SEC = 3 * 60;
 const FULL_DURATION_SEC = HALF_DURATION_SEC * 2;
 const statProfiles = {
@@ -44,6 +44,7 @@ export class FootballEngine {
     finished = false;
     startedAtMs = Date.now();
     events = [];
+    halfTimeBreakRemainingSec = 0;
     ball;
     teamA;
     teamB;
@@ -68,18 +69,26 @@ export class FootballEngine {
     tick(dtSec) {
         if (!this.running || this.finished)
             return;
-        const prevClock = this.clockSec;
-        this.clockSec += dtSec;
-        if (prevClock < HALF_DURATION_SEC && this.clockSec >= HALF_DURATION_SEC) {
-            this.half = 2;
-            this.events.push({ type: 'HALF_TIME', timestamp: this.clockSec });
-        }
-        if (this.clockSec >= FULL_DURATION_SEC) {
-            this.finished = true;
-            this.running = false;
-            this.events.push({ type: 'FULL_TIME', timestamp: this.clockSec });
+        if (this.halfTimeBreakRemainingSec > 0) {
+            this.halfTimeBreakRemainingSec = Math.max(0, this.halfTimeBreakRemainingSec - dtSec);
             return;
         }
+        const nextClock = this.clockSec + dtSec;
+        if (this.half === 1 && this.clockSec < HALF_DURATION_SEC && nextClock >= HALF_DURATION_SEC) {
+            this.clockSec = HALF_DURATION_SEC;
+            this.events.push({ type: 'HALF_TIME', data: { breakSec: 10 }, timestamp: this.clockSec });
+            this.halfTimeBreakRemainingSec = 10;
+            this.half = 2;
+            return;
+        }
+        if (this.clockSec < FULL_DURATION_SEC && nextClock >= FULL_DURATION_SEC) {
+            this.clockSec = FULL_DURATION_SEC;
+            this.finished = true;
+            this.running = false;
+            this.events.push({ type: 'FULL_TIME', data: { score: { ...this.score } }, timestamp: this.clockSec });
+            return;
+        }
+        this.clockSec = nextClock;
         this.allPlayers.forEach(p => {
             if (p.decisionTimer <= 0) {
                 p.decisionTimer = DECISION_INTERVAL + this.rng.range(-0.05, 0.05);
@@ -97,6 +106,8 @@ export class FootballEngine {
         this.seq += 1;
     }
     getSnapshot() {
+        const events = this.events;
+        this.events = [];
         return {
             matchId: this.config.matchId,
             seq: this.seq,
@@ -122,7 +133,7 @@ export class FootballEngine {
                 state: p.state,
                 hasBall: p.hasBall,
             })),
-            events: [...this.events],
+            events,
         };
     }
     _decide(player) {
@@ -547,13 +558,13 @@ export class FootballEngine {
         }
     }
     _checkGoal() {
-        if (this.ball.z > 0 || this.ball.isAerial)
+        if (!this.ball.inFlight)
             return;
         const inGoalY = this.ball.pos.y > PITCH_H / 2 - GOAL_W / 2 && this.ball.pos.y < PITCH_H / 2 + GOAL_W / 2;
         if (!inGoalY)
             return;
-        const scoredA = this.ball.pos.x < 20;
-        const scoredB = this.ball.pos.x > PITCH_W - 20;
+        const scoredA = this.ball.pos.x <= GOAL_DEPTH;
+        const scoredB = this.ball.pos.x >= PITCH_W - GOAL_DEPTH;
         if (scoredA) {
             this.score.B += 1;
             this.events.push({ type: 'GOAL', data: { team: 'B', scorer: this.ball.lastKicker?.id }, timestamp: this.clockSec });
